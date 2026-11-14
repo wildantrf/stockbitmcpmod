@@ -14,6 +14,7 @@
  */
 import { execFileSync, execSync } from "node:child_process";
 import { basename } from "node:path";
+import { pathToFileURL } from "node:url";
 
 /** Exactly what belongs in the tarball. Anything else fails the run. */
 // npm also includes docs/README.md automatically when files from docs/ are packaged.
@@ -74,14 +75,19 @@ function npmPackJson() {
   return execSync("npm pack --dry-run --json", options);
 }
 
+export function packEntry(parsed) {
+  // npm 12 keys results by package name; older npm returns an array or one entry.
+  const entries = Array.isArray(parsed) ? parsed : parsed?.files ? [parsed] : Object.values(parsed ?? {});
+  if (entries.length !== 1 || !Array.isArray(entries[0]?.files)) {
+    throw new Error("npm pack --json did not return exactly one package file list");
+  }
+  return entries[0];
+}
+
 function packFileList() {
   const out = npmPackJson();
   // `npm pack --json` prints an array with one entry per tarball it would build.
-  const parsed = JSON.parse(out);
-  const entry = Array.isArray(parsed) ? parsed[0] : parsed;
-  if (!entry || !Array.isArray(entry.files)) {
-    throw new Error("npm pack --json did not return a file list");
-  }
+  const entry = packEntry(JSON.parse(out));
   return { name: entry.name, version: entry.version, files: entry.files.map((f) => f.path) };
 }
 
@@ -114,4 +120,4 @@ function main() {
   console.log(`check:pack OK — ${name}@${version}: ${files.length} files (${js} compiled, ${files.length - js} documentation/metadata).`);
 }
 
-main();
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();
